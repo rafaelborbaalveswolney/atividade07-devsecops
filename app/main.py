@@ -31,8 +31,3 @@ def health():
 def echo(mensagem: Mensagem):
     return {"resposta": mensagem.texto}
 
-
-
-# VULNERABILIDADE INTENCIONAL PARA TESTAR O SECURITY GATE
-def teste_inseguro(entrada: str):
-    return eval(entrada)
