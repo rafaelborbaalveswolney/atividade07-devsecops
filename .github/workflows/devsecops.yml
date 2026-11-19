@@ -1,0 +1,105 @@
+name: Esteira DevSecOps - Atividade 07
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seguranca:
+    name: Verificacoes de seguranca e deploy de teste
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Baixar codigo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 1 - Gitleaks (segredos)
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Instalar bibliotecas e ferramentas
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install semgrep cyclonedx-bom httpx
+
+      - name: Testes da API
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+
+      - name: 2 - Semgrep (SAST e Security Gate)
+        run: semgrep scan --config .semgrep.yml --error --metrics off app
+
+      - name: 3 - Gerar SBOM CycloneDX
+        run: cyclonedx-py requirements requirements.txt --output-format JSON --output-file sbom.cdx.json
+
+      - name: Publicar SBOM como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+
+      - name: 4 - Trivy SCA (dependencias / CVEs)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: 5 - Trivy IaC (Dockerfile e Kubernetes)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          format: table
+
+      - name: Construir imagem Docker
+        run: docker build -t atividade07-devsecops:local .
+
+      - name: 6 - Trivy Container (imagem Docker)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: atividade07-devsecops:local
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: 7 - Deploy temporario no Docker Compose
+        run: |
+          docker compose up -d --no-build
+          for n in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              echo "API pronta"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: 8 - DAST (testes HTTP com Security Gate)
+        run: python scripts/dast.py
+
+      - name: Limpar ambiente de teste
+        if: always()
+        run: docker compose down --remove-orphans || true

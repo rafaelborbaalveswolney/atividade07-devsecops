@@ -1,0 +1,18 @@
+rules:
+  - id: python-dangerous-eval
+    message: "Nao use eval(): executar expressao nao confiavel permite execucao arbitraria de codigo."
+    languages: [python]
+    severity: ERROR
+    pattern: eval(...)
+  - id: python-subprocess-shell-true
+    message: "Evite shell=True em subprocess: risco de injecao de comandos."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern: subprocess.$F(..., shell=True, ...)
+  - id: python-cors-all
+    message: "CORS com origem irrestrita deve ser revisado."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern: CORSMiddleware(..., allow_origins=["*"], ...)
