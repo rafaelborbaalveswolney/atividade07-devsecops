@@ -31,3 +31,6 @@ def health():
 def echo(mensagem: Mensagem):
     return {"resposta": mensagem.texto}
 
+# VULNERABILIDADE INTENCIONAL PARA DEMONSTRACAO
+def teste_inseguro(entrada: str):
+return eval(entrada)
